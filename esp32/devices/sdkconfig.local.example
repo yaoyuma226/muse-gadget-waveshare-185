@@ -1,0 +1,9 @@
+# Copy to sdkconfig.local (gitignored) and paste your own token. Get one at
+# https://gadgets.muse.ai/settings/sdk-tokens -- every gadget needs one to
+# pair. It is compiled into the firmware, so treat it as an identifier rather
+# than a password, and revoke and rebuild if it leaks.
+#
+# The build checks the shape: mgst_ plus 43 base64url characters. A wrong one
+# is a CMake FATAL_ERROR; none at all only warns, and the gadget boots but
+# never pairs.
+CONFIG_GADGET_SDK_TOKEN="mgst_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"

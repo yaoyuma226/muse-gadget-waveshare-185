@@ -24,6 +24,12 @@ muse-simulator.ppm
 # Local gadget provisioning and original-device flash backups.
 .sdk-token
 /backups/
+# The SDK token overlay, loaded last by tools/muse/board.sh.
+esp32/devices/sdkconfig.local
+# Per-board build trees and the shared component cache.
+esp32/build-*/
+esp32/managed_components/
+esp32/dependencies.lock
 
 # Local only: Claude Code notes and the SDK token
 CLAUDE.md

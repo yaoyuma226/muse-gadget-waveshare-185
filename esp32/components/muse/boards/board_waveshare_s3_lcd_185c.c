@@ -15,7 +15,9 @@
  */
 
 /*
- * Waveshare ESP32-S3-Touch-LCD-1.85C: ESP32-S3R8, 16 MB flash, round 360 px
+ * Waveshare ESP32-S3-Touch-LCD-1.85C and the plain 1.85, which differ only in
+ * where touch sits and how the board powers down (see the CONFIG_MUSE_BOARD_
+ * WAVESHARE_S3_LCD_185 blocks below): ESP32-S3R8, 16 MB flash, round 360 px
  * ST77916 LCD on QSPI with a PWM backlight (GPIO5), CST816 touch, TCA9554 IO
  * expander holding the LCD and touch resets. Audio differs by revision, told
  * apart by whether the ES8311 answers on I2C:
@@ -26,6 +28,13 @@
  * through a 200K/100K divider on GPIO8 and the slide switch cuts it. BOOT
  * (GPIO0) is the only button besides RESET, so it talks; sleep and power off
  * are in the touch settings.
+ *
+ * The plain 1.85 is the 1.85C V1's audio (PCM5101 + one I2S MEMS mic) with two
+ * changes: CST816 touch answers on its own I2C bus (GPIO1/GPIO3) rather than
+ * the expander's, and the battery rail is held up by a soft latch on GPIO7
+ * instead of a mechanical slide switch, so it can really switch itself off.
+ * Pins follow Waveshare's ESP32-S3-Touch-LCD-1.85 schematic and demo, and
+ * xiaozhi-esp32's waveshare/esp32-s3-touch-lcd-1.85 board.
  *
  * Pins and the panel init sequence follow Waveshare's
  * waveshareteam/ESP32-S3-Touch-LCD-1.85C (ESP-IDF example and V2 schematic)
@@ -92,6 +101,16 @@ static const char *TAG = "board";
 /* The V1 mic sends 24 bits in 32-bit slots. Its top 16 bits are quiet for
  * speech, so the settings' mic gain, made for the V2's PGA, applies less this. */
 #define MIC_GAIN_OFFSET_DB 18
+
+#if CONFIG_MUSE_BOARD_WAVESHARE_S3_LCD_185
+/* Touch has a bus to itself, and 33-37 plus 26-32 are gone to octal PSRAM and
+ * flash, which leaves GPIO1 and GPIO3 for it. */
+#define TP_I2C_SDA GPIO_NUM_1
+#define TP_I2C_SCL GPIO_NUM_3
+/* Driven high this holds the battery rail up; low cuts it. Waveshare's
+ * PWR_Init raises it before anything else, or the board dies on unplug. */
+#define PWR_LATCH GPIO_NUM_7
+#endif
 
 #define BOOT_GPIO GPIO_NUM_0
 #define BATT_ADC ADC_CHANNEL_7              /* GPIO8, behind a 1/3 divider */
@@ -297,6 +316,7 @@ static const st77916_lcd_init_cmd_t s_init_new[] = {
 };
 
 static i2c_master_bus_handle_t s_i2c;
+static i2c_master_bus_handle_t s_tp_i2c;    /* the same bus, bar the plain 1.85 */
 static i2c_master_dev_handle_t s_exio;
 static uint8_t s_exio_out = 0xFF;
 static esp_lcd_panel_handle_t s_panel;
@@ -327,6 +347,14 @@ static void exio_reset(uint8_t mask)
 
 static esp_err_t init(void)
 {
+#if CONFIG_MUSE_BOARD_WAVESHARE_S3_LCD_185
+    const gpio_config_t pwr_cfg = {
+        .pin_bit_mask = BIT64(PWR_LATCH),
+        .mode = GPIO_MODE_OUTPUT,
+    };
+    ESP_RETURN_ON_ERROR(gpio_config(&pwr_cfg), TAG, "power latch");
+    ESP_RETURN_ON_ERROR(gpio_set_level(PWR_LATCH, 1), TAG, "power on");
+#endif
     const i2c_master_bus_config_t i2c_cfg = {
         .i2c_port = I2C_NUM_0,
         .sda_io_num = I2C_SDA,
@@ -336,6 +364,19 @@ static esp_err_t init(void)
         .flags.enable_internal_pullup = true,
     };
     ESP_RETURN_ON_ERROR(i2c_new_master_bus(&i2c_cfg, &s_i2c), TAG, "i2c");
+#if CONFIG_MUSE_BOARD_WAVESHARE_S3_LCD_185
+    const i2c_master_bus_config_t tp_i2c_cfg = {
+        .i2c_port = I2C_NUM_1,
+        .sda_io_num = TP_I2C_SDA,
+        .scl_io_num = TP_I2C_SCL,
+        .clk_source = I2C_CLK_SRC_DEFAULT,
+        .glitch_ignore_cnt = 7,
+        .flags.enable_internal_pullup = true,
+    };
+    ESP_RETURN_ON_ERROR(i2c_new_master_bus(&tp_i2c_cfg, &s_tp_i2c), TAG, "touch i2c");
+#else
+    s_tp_i2c = s_i2c;
+#endif
     const i2c_device_config_t exio_cfg = {
         .dev_addr_length = I2C_ADDR_BIT_LEN_7,
         .device_address = EXIO_ADDR,
@@ -348,7 +389,11 @@ static esp_err_t init(void)
                         TAG, "expander dir");
 
     ESP_RETURN_ON_ERROR(muse_gpio_button_init(&s_boot, BOOT_GPIO), TAG, "boot button");
+#if CONFIG_MUSE_BOARD_WAVESHARE_S3_LCD_185
+    s_v2 = false;               /* only ever PCM5101 + one I2S mic */
+#else
     s_v2 = i2c_master_probe(s_i2c, ES8311_CODEC_DEFAULT_ADDR >> 1, 50) == ESP_OK;
+#endif
     ESP_LOGI(TAG, "board V%d: %s", s_v2 ? 2 : 1, s_v2 ? "ES8311 + ES7210" : "PCM5101 + I2S mic");
     if (!s_v2) {
         s_board.mic_slot = 1;   /* the mic answers on the right slot */
@@ -487,7 +532,7 @@ static lv_display_t *display_start(lv_indev_t **touch)
         .rst_gpio_num = GPIO_NUM_NC,        /* on the expander */
         .int_gpio_num = TP_INT,
     };
-    if (esp_lcd_new_panel_io_i2c(s_i2c, &tp_io_cfg, &tp_io) != ESP_OK ||
+    if (esp_lcd_new_panel_io_i2c(s_tp_i2c, &tp_io_cfg, &tp_io) != ESP_OK ||
         esp_lcd_touch_new_i2c_cst816s(tp_io, &tp_cfg, &s_tp) != ESP_OK) {
         ESP_LOGW(TAG, "touch unavailable");
         s_tp = NULL;
@@ -739,8 +784,10 @@ static esp_err_t read_power(muse_power_t *out)
 }
 
 /*
- * No power latch: the battery switch is mechanical. Screen and amp off, then
- * deep sleep until BOOT is pressed (or RESET).
+ * Screen and amp off, then deep sleep until BOOT is pressed (or RESET). The
+ * plain 1.85 drops its latch first, which cuts the battery rail outright; that
+ * does nothing while USB feeds the regulator, so the sleep still has to
+ * follow for the plugged-in case.
  */
 static esp_err_t power_off(void)
 {
@@ -753,6 +800,10 @@ static esp_err_t power_off(void)
         vTaskDelay(pdMS_TO_TICKS(20));
     }
     vTaskDelay(pdMS_TO_TICKS(50));
+#if CONFIG_MUSE_BOARD_WAVESHARE_S3_LCD_185
+    gpio_set_level(PWR_LATCH, 0);
+    vTaskDelay(pdMS_TO_TICKS(50));
+#endif
     ESP_RETURN_ON_ERROR(esp_sleep_enable_ext0_wakeup(BOOT_GPIO, 0), TAG, "wake button");
     rtc_gpio_pullup_en(BOOT_GPIO);
     rtc_gpio_pulldown_dis(BOOT_GPIO);
@@ -761,7 +812,11 @@ static esp_err_t power_off(void)
 }
 
 static muse_board_t s_board = {
+#if CONFIG_MUSE_BOARD_WAVESHARE_S3_LCD_185
+    .name = "Waveshare ESP32-S3-Touch-LCD-1.85",
+#else
     .name = "Waveshare ESP32-S3-Touch-LCD-1.85C",
+#endif
     .width = LCD_RES,
     .height = LCD_RES,
     .round = true,
