@@ -155,6 +155,11 @@ until something fills `start_tts` in
 - **The QMI8658 IMU is unused.** The 1.85C has no IMU, so the shared driver
   never learned it; it is there on this board for the taking.
 
+## Enclosure
+
+A 3D-printable case and stand (STL, STEP and a Bambu Studio project) is in
+[`enclosure/`](enclosure/).
+
 ## License
 
 Apache-2.0, as upstream. See [LICENSE](LICENSE). The `esp32/avatar/` artwork
