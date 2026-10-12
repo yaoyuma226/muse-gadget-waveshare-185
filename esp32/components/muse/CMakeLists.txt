@@ -38,6 +38,8 @@ if(CONFIG_MUSE_ENABLED)
         "muse_settings.c"
         "muse_settings_ui.c"
         "muse_text.c"
+        "muse_font_cjk_16.c"
+        "muse_tts.c"
         "muse_keypad.c"
         "muse_lv_mem.c"
         "muse_link.c"
@@ -55,9 +57,17 @@ if(CONFIG_MUSE_ENABLED)
     file(GLOB custom_avatar CONFIGURE_DEPENDS "${COMPONENT_DIR}/avatar/muse_pixel.c")
     if(custom_avatar)
         message(STATUS "Custom avatar: components/muse/avatar/muse_pixel.c")
-        list(APPEND srcs "avatar/muse_pixel.c")
+        set(pixel_avatar "avatar/muse_pixel.c")
     else()
-        list(APPEND srcs "../../avatar/muse_pixel.c")
+        set(pixel_avatar "../../avatar/muse_pixel.c")
+    endif()
+    list(APPEND srcs ${pixel_avatar})
+    if(CONFIG_MUSE_VIDEO_AVATAR)
+        # The video avatar draws Muse, and falls back to the pixel one, built
+        # under muse_pixel_default_* names.
+        list(APPEND srcs "muse_video_avatar.c")
+        set_source_files_properties(${pixel_avatar} PROPERTIES COMPILE_DEFINITIONS
+            "muse_pixel_accent=muse_pixel_default_accent;muse_pixel_render=muse_pixel_default_render;muse_pixel_set_size=muse_pixel_default_set_size;muse_pixel_scale=muse_pixel_default_scale")
     endif()
     if(CONFIG_MUSE_BOARD_WAVESHARE_S3_175C OR CONFIG_MUSE_BOARD_WAVESHARE_S3_175)
         # One driver: the 1.75 differs only in pins (its BSP's) and its PWR key.
@@ -90,7 +100,7 @@ if(CONFIG_MUSE_ENABLED)
 elseif(CONFIG_HOMEHUB_VOICE)
     # The Voice PE board uses just the Hatch voice session; the project's main/
     # voice_muse_chat.c stands in for the Muse settings, Wi-Fi and Link hooks.
-    list(APPEND srcs "muse_chat.c" "muse_account_api.c" "muse_chat_session.cpp" "muse_chat_text.c" "muse_text.c")
+    list(APPEND srcs "muse_chat.c" "muse_account_api.c" "muse_chat_session.cpp" "muse_chat_text.c" "muse_text.c" "muse_tts.c")
     list(APPEND embed "test_reply.mp3")
 endif()
 
@@ -99,7 +109,7 @@ set(muse_priv_requires
     bt esp-tls mbedtls esp_app_format esp_http_client
     noise_core minimp3
     esp_lcd esp_adc esp_driver_i2s esp_driver_ledc esp_driver_spi esp_driver_uart esp_wifi
-    esp_driver_pcnt)
+    esp_driver_pcnt esp_partition)
 list(APPEND muse_priv_requires camera)
 
 idf_component_register(

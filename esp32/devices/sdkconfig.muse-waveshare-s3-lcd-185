@@ -74,3 +74,7 @@ CONFIG_USJ_NO_AUTO_LS_ON_CONNECTION=y
 # actually slept, and how long each power lock kept the chip awake.
 CONFIG_PM_LIGHT_SLEEP_CALLBACKS=y
 CONFIG_PM_PROFILING=y
+
+# Play your avatar's clips from the avatar partition (tools/muse/avatar_video.py);
+# the pixel avatar until they're flashed.
+CONFIG_MUSE_VIDEO_AVATAR=y

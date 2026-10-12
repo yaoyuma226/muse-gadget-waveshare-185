@@ -7,3 +7,8 @@
 # is a CMake FATAL_ERROR; none at all only warns, and the gadget boots but
 # never pairs.
 CONFIG_GADGET_SDK_TOKEN="mgst_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+# Optional: speak replies through OpenAI's speech API (muse_tts.c). Without a
+# key, replies are text only. Also compiled in: use a key you can revoke.
+# CONFIG_MUSE_TTS_OPENAI_KEY="sk-..."
+# CONFIG_MUSE_TTS_OPENAI_VOICE="alloy"

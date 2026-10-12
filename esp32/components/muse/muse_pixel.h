@@ -55,3 +55,10 @@ void muse_pixel_set_size(int px);
  * image never has to exist in RAM.
  */
 void muse_pixel_scale(uint16_t *dst, int stride_px, int x0, int x1, int y0, int y1);
+
+/*
+ * For a renderer that changes every pixel at once (muse_video_avatar.c): 1 if
+ * the frame changed since the last call, 0 if not. -1, the default, has the UI
+ * compare one pixel per grid cell to find what changed.
+ */
+int muse_pixel_changed(void);

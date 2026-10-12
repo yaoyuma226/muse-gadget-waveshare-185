@@ -40,6 +40,11 @@ void muse_text_to_ascii(char *s, size_t cap);
 /* text, or if it needs stand-ins and fits in cap bytes, a copy with them in buf. */
 const char *muse_text_showable(const char *text, char *buf, size_t cap);
 
+/* CJK at s (Hanzi, kana, Hangul, full-width forms), which wraps between any
+ * two characters, not at spaces: 0 not CJK, 1 CJK, 2 CJK punctuation a line
+ * can't start with (a comma, a full stop, a closing bracket). */
+int muse_text_cjk(const char *s);
+
 #ifdef __cplusplus
 }
 #endif
