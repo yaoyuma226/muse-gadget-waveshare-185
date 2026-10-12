@@ -62,7 +62,8 @@ if(CONFIG_MUSE_ENABLED)
     if(CONFIG_MUSE_BOARD_WAVESHARE_S3_175C OR CONFIG_MUSE_BOARD_WAVESHARE_S3_175)
         # One driver: the 1.75 differs only in pins (its BSP's) and its PWR key.
         list(APPEND srcs "boards/board_waveshare_s3_175c.c" "boards/muse_lcd_bands.c")
-    elseif(CONFIG_MUSE_BOARD_WAVESHARE_S3_LCD_185C)
+    elseif(CONFIG_MUSE_BOARD_WAVESHARE_S3_LCD_185C OR CONFIG_MUSE_BOARD_WAVESHARE_S3_LCD_185)
+        # One driver: the plain 1.85 differs only in the touch bus and its latch.
         list(APPEND srcs "boards/board_waveshare_s3_lcd_185c.c" "boards/muse_lcd_bands.c")
     elseif(CONFIG_MUSE_BOARD_AIPI)
         list(APPEND srcs "boards/board_aipi.c")
