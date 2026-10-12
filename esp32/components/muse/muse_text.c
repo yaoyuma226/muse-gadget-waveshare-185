@@ -227,3 +227,20 @@ const char *muse_text_showable(const char *text, char *buf, size_t cap)
     muse_text_to_ascii(buf, cap);
     return buf;
 }
+
+int muse_text_cjk(const char *s)
+{
+    size_t len;
+    int32_t cp = decode((const unsigned char *)s, &len);
+    switch (cp) {
+    case 0x3001: case 0x3002:                               /* 、。 */
+    case 0x3009: case 0x300B: case 0x300D: case 0x300F:     /* 〉》」』 */
+    case 0x3011: case 0x3015: case 0x3017:                  /* 】〕〗 */
+    case 0xFF01: case 0xFF09: case 0xFF0C: case 0xFF0E:     /* ！），． */
+    case 0xFF1A: case 0xFF1B: case 0xFF1F: case 0xFF3D:     /* ：；？］ */
+    case 0xFF5D:                                            /* ｝ */
+        return 2;
+    }
+    return (cp >= 0x2E80 && cp <= 0xA4CF) || (cp >= 0xAC00 && cp <= 0xD7A3) || (cp >= 0xF900 && cp <= 0xFAFF) ||
+           (cp >= 0xFE30 && cp <= 0xFE4F) || (cp >= 0xFF00 && cp <= 0xFF60) || (cp >= 0xFFE0 && cp <= 0xFFE6);
+}

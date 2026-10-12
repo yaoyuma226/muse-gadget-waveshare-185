@@ -69,6 +69,7 @@ extern "C" {
 #include "muse_account_api.h"
 #include "muse_link.h"
 #include "muse_settings.h"
+#include "muse_tts.h"
 #include "muse_wifi.h"
 }
 #include "muse_chat_priv.h"
@@ -109,7 +110,7 @@ static const char *TAG = "muse_chat_session";
 #define AUTO_RETRY_MIN_US (5 * 1000000LL)  /* connecting without a turn, after a failure */
 #define AUTO_RETRY_MAX_US (120 * 1000000LL)
 #define FINAL_TIMEOUT_US (15 * 1000000LL)  /* release -> final transcript */
-#define REPLY_TIMEOUT_US (60 * 1000000LL)  /* chat posted -> first assistant message */
+#define REPLY_TIMEOUT_US (120 * 1000000LL) /* chat posted -> first assistant message; voice notes can take a minute to transcribe */
 #define TURN_CAP_US (180 * 1000000LL)
 #define SETTLE_US (3 * 1000000LL)          /* quiet period that ends a turn */
 #define BUSY_HOLD_US (20 * 1000000LL)      /* how long a busy agent keeps it open */
@@ -952,6 +953,7 @@ static void turn_reset_streams(void)
 static void turn_finish(void)
 {
     turn_reset_streams();
+    muse_tts_cancel();
     s_turn.phase = P_IDLE;
     s_turn.dict_id = s_turn.chat_id = 0;
     s_turn.tts_msg = -1;
@@ -1515,8 +1517,26 @@ static void start_tts(void)
          * tts_data() as it arrives (it buffers up to MP3_BUF and drops the
          * rest, so hold off while it's full) and set s_turn.mp3_ended at the
          * end. decode() plays it at the speaker's volume, captions following,
-         * and finishes the message once it's drained.
+         * and finishes the message once it's drained. muse_tts.c does this
+         * with OpenAI's speech API when it has a key.
          */
+        const char *text = s_turn.texts ? s_turn.texts + i * TEXT_MAX : nullptr;
+        if (text && muse_settings_speaker_on() && muse_tts_start(text)) {
+            mark(M_TTS);
+            m.pcm_start = s_turn.pcm_out;
+            m.pcm_frames = 0;
+            m.tts = TTS_ACTIVE;
+            s_turn.tts_msg = i;
+            s_turn.silent = false;
+            s_turn.mp3_len = 0;
+            s_turn.mp3_ended = false;
+            s_turn.kbps = 0;
+            s_turn.down_rate = 0;
+            mp3dec_init(&s_turn.dec);
+            ESP_LOGI(TAG, "speaking message %s (%u chars)", m.id, (unsigned)m.len);
+            show_reply_start(m);
+            return;
+        }
         m.pcm_start = s_turn.pcm_out;
         m.pcm_frames = (uint32_t)(m.len * MIC_RATE / TEXT_CHARS_PER_S);
         m.tts = TTS_ACTIVE;
@@ -1573,10 +1593,41 @@ static void pace_silently(void)
 }
 
 /* Decodes buffered MP3 while the reply buffer has room. */
+/*
+ * Moves the speech that has arrived from muse_tts.c into the MP3 buffer. If
+ * it fails before any is played, the reply is shown at reading pace instead.
+ */
+static void pump_tts(void)
+{
+    if (s_turn.mp3_ended) {
+        return;
+    }
+    size_t n = muse_tts_read(s_turn.mp3 + s_turn.mp3_len, MP3_BUF - s_turn.mp3_len);
+    if (n) {
+        mark(M_MP3);
+        s_turn.mp3_len += n;
+    }
+    bool ok;
+    if (!muse_tts_finished(&ok)) {
+        return;
+    }
+    msg_t &m = s_turn.msgs[s_turn.tts_msg];
+    if (ok || s_turn.pcm_out != m.pcm_start || s_turn.mp3_len) {
+        s_turn.mp3_ended = true;
+        return;
+    }
+    ESP_LOGW(TAG, "no speech for message %s; showing it", m.id);
+    m.pcm_frames = (uint32_t)(m.len * MIC_RATE / TEXT_CHARS_PER_S);
+    s_turn.silent = true;
+}
+
 static void decode(void)
 {
     if (s_turn.tts_msg < 0) {
         return;
+    }
+    if (!s_turn.silent) {
+        pump_tts();
     }
     if (s_turn.silent) {
         pace_silently();

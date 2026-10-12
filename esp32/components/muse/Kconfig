@@ -139,4 +139,15 @@ menu "Muse"
             them. Needs PSRAM. Without it, voice notes go over Home Link's own
             session to its paired VM and replies are shown as text.
 
+    config MUSE_VIDEO_AVATAR
+        bool "Play your avatar's own clips in place of the pixel art"
+        depends on MUSE_ENABLED && IDF_TARGET_ESP32S3 && SPIRAM
+        default n
+        help
+            Muse is drawn from JPEG clips in the "avatar" flash partition,
+            which tools/muse/avatar_video.py makes from your avatar's videos
+            in the Muse app and flashes. Without clips there, it falls back to
+            the pixel avatar. Needs a partition table with an "avatar" data
+            partition (partitions_muse.csv has one).
+
 endmenu

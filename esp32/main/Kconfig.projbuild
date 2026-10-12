@@ -32,6 +32,27 @@ menu "ESP32 Device SDK"
             app inside the encrypted pairing session and includes it when it
             refreshes its device token.
 
+    config MUSE_TTS_OPENAI_KEY
+        string "OpenAI API key for spoken replies"
+        default ""
+        help
+            Muse doesn't speak gadget replies, so with a key the device sends
+            each reply's text to OpenAI's speech API and plays the MP3 it
+            returns (components/muse/muse_tts.c). Empty: replies are text
+            only. Compiled into the firmware, like the SDK token, so put it in
+            devices/sdkconfig.local and use a key you can revoke.
+
+    config MUSE_TTS_OPENAI_MODEL
+        string "OpenAI speech model"
+        default "gpt-4o-mini-tts"
+
+    config MUSE_TTS_OPENAI_VOICE
+        string "OpenAI voice"
+        default "alloy"
+        help
+            One of OpenAI's voices: alloy, ash, ballad, coral, echo, fable,
+            nova, onyx, sage, shimmer or verse. All speak English and Chinese.
+
     config HOMEHUB_WIFI_SSID
         string "WiFi SSID override (dev iteration)"
         default ""

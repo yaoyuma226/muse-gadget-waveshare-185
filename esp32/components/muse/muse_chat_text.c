@@ -109,22 +109,28 @@ static bool next_line(const char **text, int cols, const char **start, size_t *l
     }
     const char *end = p, *brk = NULL;
     int n = 0;
+    bool after_cjk = false;
     while (*end && *end != '\n') {
+        /* A line can end at a space, and before or after CJK (which has no
+         * spaces), but not before CJK punctuation like a comma. */
+        int cjk = muse_text_cjk(end);
+        bool can = end > p && (*end == ' ' || (cjk != 2 && (cjk || after_cjk)));
         size_t bytes;
         char shown[4];
         int w = muse_text_ascii(end, &bytes, shown);
         w = w < 0 ? 1 : w;
         if (n + w > cols && n) {
+            if (!can && brk) {
+                end = brk;   /* don't split a word */
+            }
             break;
         }
-        if (*end == ' ') {
+        if (can) {
             brk = end;
         }
+        after_cjk = cjk != 0;
         n += w;
         end += bytes;
-    }
-    if (*end && *end != ' ' && *end != '\n' && brk) {
-        end = brk;   /* don't split a word */
     }
     *start = p;
     *len = end - p;
