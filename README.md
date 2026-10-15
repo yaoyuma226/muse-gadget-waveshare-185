@@ -157,8 +157,10 @@ until something fills `start_tts` in
 
 ## Enclosure
 
-A 3D-printable case and stand (STL, STEP and a Bambu Studio project) is in
-[`enclosure/`](enclosure/).
+The Muse V9 3D-printable case and stand (STL for each part, a Bambu Studio
+layout, an assembled model and a 360° browser viewer) is in
+[`enclosure/`](enclosure/). It replaces the earlier V7 design, which didn't
+fit.
 
 ## License
 

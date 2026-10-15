@@ -1,0 +1,30 @@
+{
+  "00_optional_docking_test": {
+    "watertight": true,
+    "consistent_winding": true,
+    "connected_components": 1,
+    "triangles": 16046,
+    "volume_mm3": 7362.5
+  },
+  "01_screen_shell": {
+    "watertight": true,
+    "consistent_winding": true,
+    "connected_components": 1,
+    "triangles": 7278,
+    "volume_mm3": 19596.95
+  },
+  "02_twist_back": {
+    "watertight": true,
+    "consistent_winding": true,
+    "connected_components": 1,
+    "triangles": 31378,
+    "volume_mm3": 13126.24
+  },
+  "03_smooth_cradle_stand": {
+    "watertight": true,
+    "consistent_winding": true,
+    "connected_components": 1,
+    "triangles": 56014,
+    "volume_mm3": 44822.14
+  }
+}
