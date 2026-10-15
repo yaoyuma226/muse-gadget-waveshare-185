@@ -1,0 +1,41 @@
+{
+  "single_connected_closed_mesh": true,
+  "dimensions_mm": [
+    80.0,
+    56.0,
+    35.0
+  ],
+  "physical_fit_verified": false,
+  "rail_clearance_per_side_mm": 0.25,
+  "seat_height_mm": 35,
+  "stop_height_mm": 28,
+  "nominal_engagement_mm": 7,
+  "cable_rear_opening_mm": [
+    22,
+    18
+  ],
+  "movement_checks": {
+    "shell_lift_0_overlap_mm3": 5.5630999895583955e-05,
+    "back_lift_0_overlap_mm3": 0.0,
+    "shell_lift_1_overlap_mm3": 0.0,
+    "back_lift_1_overlap_mm3": 0.0,
+    "shell_lift_2_overlap_mm3": 0.0,
+    "back_lift_2_overlap_mm3": 0.0,
+    "shell_lift_4_overlap_mm3": 0.0,
+    "back_lift_4_overlap_mm3": 0.0,
+    "shell_lift_7_overlap_mm3": 0.0,
+    "back_lift_7_overlap_mm3": 0.0,
+    "shell_lift_12_overlap_mm3": 0.0,
+    "back_lift_12_overlap_mm3": 0.0,
+    "shell_lift_20_overlap_mm3": 0.0,
+    "back_lift_20_overlap_mm3": 0.0,
+    "straight_plug_14x24x8_overlap_mm3": 0.0
+  },
+  "stop_interference_when_pushed_down_0.5mm_mm3": 46.789933205972375,
+  "approved_part_sha256": {
+    "01_screen_shell.stl": "a0bf70f37eee1b4957f4721e1be73c02aa1f4befbfb45e0afee3e28e0a26a340",
+    "02_twist_back.stl": "2bb12e113f31ad942a22fcf17ddab09a4293d8f697835568c3426e41165f2c3e"
+  },
+  "nominal_front_wall_at_centre_mm": 4.5,
+  "approved_parts_match_V8": true
+}
