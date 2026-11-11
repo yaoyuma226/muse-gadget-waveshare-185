@@ -89,9 +89,9 @@ void muse_bus_ui_build(lv_obj_t *tile)
     lv_obj_set_style_bg_color(tile, lv_color_hex(GRAD_BOTTOM), 0);
     lv_obj_set_style_bg_opa(tile, LV_OPA_COVER, 0);
 
-    /* Plain blue vertical gradient behind the column (mockup-bus-v3),
-     * drawn by LVGL — no full-screen image any more. Excluded from the
-     * flex layout. */
+    /* Plain blue vertical gradient behind everything (mockup-bus-v3),
+     * drawn by LVGL — no full-screen image any more. Kept out of the
+     * anchored layout with IGNORE_LAYOUT. */
     static lv_grad_dsc_t grad;
     memset(&grad, 0, sizeof(grad));
     grad.dir = LV_GRAD_DIR_VER;
@@ -111,14 +111,10 @@ void muse_bus_ui_build(lv_obj_t *tile)
     lv_obj_add_flag(bg, LV_OBJ_FLAG_IGNORE_LAYOUT);
     lv_obj_remove_flag(bg, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_set_flex_flow(tile, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(tile, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_row(tile, 6, 0);
-
-    /* Small round bus badge at the top of the column (its circular
-     * alpha and white ring are baked into the asset). Scaled relative
-     * to the tile width in the tick, once the layout has settled:
-     * 110 px on the 360 px panel. */
+    /* Small round bus badge at the top (its circular alpha and white
+     * ring are baked into the asset). Scaled relative to the tile
+     * width in the tick, once the layout has settled: 110 px on the
+     * 360 px panel. */
     s_badge = lv_image_create(tile);
     lv_image_set_src(s_badge, &muse_bg_bus_badge);
     lv_obj_remove_flag(s_badge, LV_OBJ_FLAG_CLICKABLE);
@@ -144,6 +140,22 @@ void muse_bus_ui_build(lv_obj_t *tile)
     lv_label_set_text(s_second_lbl, "");
     s_mock_lbl = make_label(tile, small, COLOR_DIM);
     lv_label_set_text(s_mock_lbl, "");
+
+    /* Layout (mockup-bus-v4): no flex column. The countdown is
+     * anchored dead on the screen centre; the badge + pill stack
+     * above it via align_to (verified centred in the simulator).
+     * The labels below the countdown do NOT chain align_to off it:
+     * in this LVGL version a follower's position goes stale when
+     * the base label's text changes width (the arrival/next lines
+     * drifted right and clipped in testing). They anchor to the
+     * screen centre independently, with fixed offsets sized from
+     * the countdown's font height — deterministic for every text. */
+    lv_obj_align(s_count_lbl, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_align(s_arrival_lbl, LV_ALIGN_CENTER, 0, 52);
+    lv_obj_align(s_second_lbl, LV_ALIGN_CENTER, 0, 82);
+    lv_obj_align(s_mock_lbl, LV_ALIGN_CENTER, 0, 108);
+    lv_obj_align_to(s_route_lbl, s_count_lbl, LV_ALIGN_OUT_TOP_MID, 0, -10);
+    lv_obj_align_to(s_badge, s_route_lbl, LV_ALIGN_OUT_TOP_MID, 0, -12);
 }
 
 void muse_bus_ui_tick(void)
