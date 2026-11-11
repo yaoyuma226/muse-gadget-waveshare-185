@@ -20,6 +20,7 @@
 #include <string.h>
 #include <time.h>
 
+#include "muse_bg_assets.h"
 #include "muse_busdata.h"
 
 #if LV_FONT_MONTSERRAT_48
@@ -32,11 +33,19 @@ extern const lv_font_t muse_font_cjk_16;
 static lv_font_t s_text_16;
 #define FONT_TEXT_16 (&s_text_16)
 
-#define COLOR_LIT 0xf2efff
-#define COLOR_DIM 0x8b84a8
-#define COLOR_ACCENT 0xa77dff
+/* White text on the tile's blue gradient (mockup-bus-v3: the bus art
+ * shrank to a small round badge, the info column is the page now).
+ * The route sits in a dark pill so it stays readable over the light
+ * gradient at the top. */
+#define COLOR_LIT 0xffffff
+#define COLOR_DIM 0xc9dcee
+#define COLOR_PILL 0x144a75
+#define GRAD_TOP 0x6ebee4
+#define GRAD_BOTTOM 0x176ebe
 #define STALE_S 180   /* data older than this is shown dim, as last known */
 
+static lv_obj_t *s_badge;
+static bool s_badge_scaled;
 static lv_obj_t *s_route_lbl;
 static lv_obj_t *s_count_lbl;
 static lv_obj_t *s_arrival_lbl;
@@ -77,17 +86,55 @@ void muse_bus_ui_build(lv_obj_t *tile)
     s_text_16 = lv_font_unscii_16;
     s_text_16.fallback = &muse_font_cjk_16;
 
-    lv_obj_set_style_bg_color(tile, lv_color_black(), 0);
+    lv_obj_set_style_bg_color(tile, lv_color_hex(GRAD_BOTTOM), 0);
     lv_obj_set_style_bg_opa(tile, LV_OPA_COVER, 0);
+
+    /* Plain blue vertical gradient behind the column (mockup-bus-v3),
+     * drawn by LVGL — no full-screen image any more. Excluded from the
+     * flex layout. */
+    static lv_grad_dsc_t grad;
+    memset(&grad, 0, sizeof(grad));
+    grad.dir = LV_GRAD_DIR_VER;
+    grad.stops_count = 2;
+    grad.stops[0].color = lv_color_hex(GRAD_TOP);
+    grad.stops[0].opa = LV_OPA_COVER;
+    grad.stops[0].frac = 0;
+    grad.stops[1].color = lv_color_hex(GRAD_BOTTOM);
+    grad.stops[1].opa = LV_OPA_COVER;
+    grad.stops[1].frac = 255;
+    lv_obj_t *bg = lv_obj_create(tile);
+    lv_obj_remove_style_all(bg);
+    lv_obj_set_size(bg, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_pos(bg, 0, 0);
+    lv_obj_set_style_bg_opa(bg, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_grad(bg, &grad, 0);
+    lv_obj_add_flag(bg, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    lv_obj_remove_flag(bg, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+
     lv_obj_set_flex_flow(tile, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(tile, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_row(tile, 2, 0);
+    lv_obj_set_style_pad_row(tile, 6, 0);
+
+    /* Small round bus badge at the top of the column (its circular
+     * alpha and white ring are baked into the asset). Scaled relative
+     * to the tile width in the tick, once the layout has settled:
+     * 110 px on the 360 px panel. */
+    s_badge = lv_image_create(tile);
+    lv_image_set_src(s_badge, &muse_bg_bus_badge);
+    lv_obj_remove_flag(s_badge, LV_OBJ_FLAG_CLICKABLE);
 
     /* Small lines follow the system language: Chinese needs the 16 px
      * CJK font, English can use Montserrat 16. Language is a config, set
      * before the UI starts, so picking the fonts here is enough. */
     const lv_font_t *small = muse_bus_zh() ? FONT_TEXT_16 : &lv_font_montserrat_16;
-    s_route_lbl = make_label(tile, &lv_font_montserrat_28, COLOR_ACCENT);
+    s_route_lbl = make_label(tile, &lv_font_montserrat_28, COLOR_LIT);
+    lv_obj_set_style_bg_color(s_route_lbl, lv_color_hex(COLOR_PILL), 0);
+    lv_obj_set_style_bg_opa(s_route_lbl, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(s_route_lbl, 20, 0);
+    lv_obj_set_style_pad_left(s_route_lbl, 16, 0);
+    lv_obj_set_style_pad_right(s_route_lbl, 16, 0);
+    lv_obj_set_style_pad_top(s_route_lbl, 4, 0);
+    lv_obj_set_style_pad_bottom(s_route_lbl, 4, 0);
     lv_label_set_text(s_route_lbl, "BUS");
     s_count_lbl = make_label(tile, FONT_BIG, COLOR_LIT);
     lv_label_set_text(s_count_lbl, "--");
@@ -103,6 +150,15 @@ void muse_bus_ui_tick(void)
 {
     if (!s_built) {
         return;
+    }
+    if (!s_badge_scaled && s_badge) {
+        int w = lv_obj_get_width(lv_obj_get_parent(s_badge));
+        if (w > 0) {
+            /* The asset is drawn at its design size on a 360 px
+             * panel; scale it with the tile (412 px in the sim). */
+            lv_image_set_scale(s_badge, (int32_t)w * 256 / 360);
+            s_badge_scaled = true;
+        }
     }
     muse_bus_snapshot_t snap;
     muse_bus_snapshot(&snap);
