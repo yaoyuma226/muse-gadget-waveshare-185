@@ -41,15 +41,17 @@ static lv_font_t s_text_16;
 static lv_obj_t *s_photo;
 static lv_obj_t *s_clock_lbl;
 static lv_obj_t *s_temp_lbl;
-static lv_obj_t *s_cond_lbl;
-static lv_obj_t *s_hilo_lbl;
+static lv_obj_t *s_info_lbl;
 
 static char s_last_clock[8] = "";
 static char s_last_temp[16] = "";
-static char s_last_cond[40] = "";
-static char s_last_hilo[40] = "";
+static char s_last_info[64] = "";
 static int s_last_group = -1;
 static bool s_built;
+
+/* Temperature over a light icon (mockup: deep navy on the white
+ * cloud); white over the dark groups — muse_weather_group_dark(). */
+#define TEMP_NAVY 0x0b3b68
 
 static lv_obj_t *make_label(lv_obj_t *parent, const lv_font_t *font)
 {
@@ -126,13 +128,15 @@ void muse_weather_ui_build(lv_obj_t *tile)
     lv_obj_set_style_bg_opa(tile, LV_OPA_COVER, 0);
     lv_obj_remove_flag(tile, LV_OBJ_FLAG_SCROLLABLE);
 
-    /* Photo fills the tile (scaled to the tile's size in the tick, once
-     * the layout settles); scrims keep the white text readable. */
+    /* Background art fills the tile (scaled to the tile's size in the
+     * tick, once the layout settles). Layout per the final mockup:
+     * clock at the top (the one label that still gets a scrim), the big
+     * temperature centred over the icon, and one combined
+     * condition + high/low line below it on the gradient. */
     s_photo = lv_image_create(tile);
     lv_obj_set_pos(s_photo, 0, 0);
     lv_obj_remove_flag(s_photo, LV_OBJ_FLAG_CLICKABLE);
     make_scrim(tile, 130, true);
-    make_scrim(tile, 170, false);
 
     s_clock_lbl = make_label(tile, FONT_BIG);
     lv_label_set_text(s_clock_lbl, "--:--");
@@ -140,15 +144,13 @@ void muse_weather_ui_build(lv_obj_t *tile)
 
     s_temp_lbl = make_label(tile, FONT_BIG);
     lv_label_set_text(s_temp_lbl, "--°C");
-    lv_obj_align(s_temp_lbl, LV_ALIGN_BOTTOM_MID, 0, -64);
+    lv_obj_set_style_text_color(s_temp_lbl, lv_color_hex(TEMP_NAVY), 0);
+    lv_obj_align(s_temp_lbl, LV_ALIGN_CENTER, 0, 20);
 
-    s_cond_lbl = make_label(tile, small);
-    lv_obj_align(s_cond_lbl, LV_ALIGN_BOTTOM_MID, 0, -40);
+    s_info_lbl = make_label(tile, small);
+    lv_obj_align(s_info_lbl, LV_ALIGN_CENTER, 0, 104);
 
-    s_hilo_lbl = make_label(tile, small);
-    lv_obj_align(s_hilo_lbl, LV_ALIGN_BOTTOM_MID, 0, -18);
-
-    s_last_clock[0] = s_last_temp[0] = s_last_cond[0] = s_last_hilo[0] = '\0';
+    s_last_clock[0] = s_last_temp[0] = s_last_info[0] = '\0';
     s_last_group = -1;
 }
 
@@ -186,27 +188,31 @@ void muse_weather_ui_tick(void)
                 lv_image_set_scale(s_photo, (int32_t)w * 256 / photo->header.w);
             }
             lv_obj_move_background(s_photo);
+            /* Temperature colour follows the artwork: navy over the
+             * light icons, white over the dark ones. */
+            lv_obj_set_style_text_color(s_temp_lbl,
+                muse_weather_group_dark(group)
+                    ? lv_color_white()
+                    : lv_color_hex(TEMP_NAVY), 0);
         }
     }
 
-    char buf[48];
+    char buf[64];
     snprintf(buf, sizeof(buf), "%.0f°C", (double)snap.temp_c);
     if (strcmp(buf, s_last_temp) != 0) {
         strcpy(s_last_temp, buf);
         lv_label_set_text(s_temp_lbl, buf);
     }
     const char *cond = label_for_code(snap.weather_code, zh);
-    if (strcmp(cond, s_last_cond) != 0) {
-        strcpy(s_last_cond, cond);
-        lv_label_set_text(s_cond_lbl, cond);
-    }
     if (zh) {
-        snprintf(buf, sizeof(buf), "高 %.0f°  低 %.0f°", (double)snap.high_c, (double)snap.low_c);
+        snprintf(buf, sizeof(buf), "%s · 高 %.0f° 低 %.0f°", cond,
+                 (double)snap.high_c, (double)snap.low_c);
     } else {
-        snprintf(buf, sizeof(buf), "H %.0f°  L %.0f°", (double)snap.high_c, (double)snap.low_c);
+        snprintf(buf, sizeof(buf), "%s · H %.0f° L %.0f°", cond,
+                 (double)snap.high_c, (double)snap.low_c);
     }
-    if (strcmp(buf, s_last_hilo) != 0) {
-        strcpy(s_last_hilo, buf);
-        lv_label_set_text(s_hilo_lbl, buf);
+    if (strcmp(buf, s_last_info) != 0) {
+        strcpy(s_last_info, buf);
+        lv_label_set_text(s_info_lbl, buf);
     }
 }
