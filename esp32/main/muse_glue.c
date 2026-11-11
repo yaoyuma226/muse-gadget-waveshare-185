@@ -29,15 +29,18 @@
 
 #include "app.h"
 #include "ble_server.h"
+#include "bus_client.h"
 #include "config_store.h"
 #include "identity.h"
 #include "noise_control.h"
 #include "stack_monitor.h"
+#include "time_sync.h"
 #include "wifi_known.h"
 #include "wifi_mgr.h"
 
 #include "muse_ble.h"
 #include "muse_board.h"
+#include "muse_busdata.h"
 #include "muse_link.h"
 #include "muse_mem.h"
 #include "muse_settings.h"
@@ -615,7 +618,26 @@ static void boot_task(void *arg) {
     vTaskDelete(NULL);
 }
 
+/* muse_busdata.h bridge: the UI polls these; bus_client owns the data. */
+void muse_bus_snapshot(muse_bus_snapshot_t *out) {
+    bus_client_snapshot(out);
+}
+
+bool muse_bus_test_mode(void) {
+    return bus_client_test_mode();
+}
+
+bool muse_bus_zh(void) {
+    return bus_client_zh();
+}
+
+int muse_bus_rotate_ms(void) {
+    return bus_client_rotate_ms();
+}
+
 void muse_glue_start(void) {
+    time_sync_start();
+    bus_client_start();
     s_ready = xEventGroupCreate();
     muse_link_register(&s_ops);
     muse_ble_set_name(identity_ble_name());

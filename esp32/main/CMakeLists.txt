@@ -26,6 +26,8 @@ set(GADGET_SRCS
     "bug_report.c"
     "ota.c"
     "image_fetch.c"
+    "bus_client.c"
+    "time_sync.c"
     "../avatar/happy_anim.c"
     "pixel_font.c"
     "button.c"
