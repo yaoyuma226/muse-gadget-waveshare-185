@@ -22,8 +22,10 @@
 #include "esp_err.h"
 
 /*
- * Bring up the display and build the UI: the avatar on the first tile,
- * settings one swipe to the left. Also owns screen sleep and brightness.
+ * Bring up the display and build the UI. Tiles, left to right: weather
+ * (morning home: clock + weather), bus arrivals, the avatar face, and
+ * settings. Weekday mornings the weather and bus tiles auto-rotate; the
+ * face is never a rotation target. Also owns screen sleep and brightness.
  */
 esp_err_t muse_ui_start(void);
 

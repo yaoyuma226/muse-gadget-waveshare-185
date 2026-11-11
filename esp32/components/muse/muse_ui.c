@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -33,6 +34,8 @@
 
 #include "muse_ble.h"
 #include "muse_board.h"
+#include "muse_bus_ui.h"
+#include "muse_busdata.h"
 #include "muse_chat.h"
 #include "muse_console.h"
 #include "muse_link.h"
@@ -42,6 +45,7 @@
 #include "muse_settings.h"
 #include "muse_settings_ui.h"
 #include "muse_state.h"
+#include "muse_weather_ui.h"
 #include "muse_wifi.h"
 #if CONFIG_MUSE_WATCHER_CAMERA
 #include "boards/watcher_camera.h"
@@ -96,9 +100,16 @@ static int s_canvas_px;     /* Muse's size on screen */
 static int s_dy;            /* full layout: offset from a 466 px tall screen */
 static lv_indev_t *s_indev;
 static lv_obj_t *s_tv;
+static lv_obj_t *s_weather;
+static lv_obj_t *s_bus;
 static lv_obj_t *s_face;
 static lv_obj_t *s_settings;
-static lv_obj_t *s_dots[2];
+static lv_obj_t *s_dots[4];
+/* Morning rotation (weather <-> bus only; the face is never rotated to,
+ * it is reached by swipe or by a talk). See rotation_tick(). */
+static bool s_rot_engaged;
+static float s_rot_last;         /* last programmatic rotation switch */
+static float s_rot_pause_until;  /* manual swipe pauses rotation until then */
 static lv_obj_t *s_wifi_icon;
 static lv_obj_t *s_ble_icon;
 static lv_obj_t *s_cover;
@@ -787,6 +798,93 @@ static void on_ring_draw(lv_event_t *e)
     layer->_clip_area = clip;
 }
 
+/* Programmatic tile switch: remember the target so on_tile_changed
+ * doesn't mistake it for a manual swipe. (A synchronous flag is not
+ * enough: with LV_ANIM_ON the VALUE_CHANGED event fires when the slide
+ * animation completes, after any flag would have been cleared.) */
+static lv_obj_t *s_expected_tile;
+
+static void show_tile(lv_obj_t *tile)
+{
+    if (!s_tv || !tile) {
+        return;
+    }
+    lv_obj_add_flag(s_tv, LV_OBJ_FLAG_SCROLLABLE);
+    s_expected_tile = tile;
+    lv_tileview_set_tile(s_tv, tile, LV_ANIM_ON);
+}
+
+static void on_tile_changed(lv_event_t *e)
+{
+    (void)e;
+    lv_obj_t *act = lv_tileview_get_tile_active(s_tv);
+    if (act == s_expected_tile) {
+        s_expected_tile = NULL;   /* our own switch landed; not a swipe */
+    } else {
+        /* A manual swipe: hands off the rotation for ~5 minutes. */
+        s_rot_pause_until = (float)esp_timer_get_time() / 1e6f + 300.0f;
+    }
+}
+
+/* Weekday 08:00-12:00 local (America/New_York once the device set its TZ),
+ * or always in bus test mode. False until the clock is synced. */
+static bool morning_window(void)
+{
+    if (muse_bus_test_mode()) {
+        return true;
+    }
+    time_t t = time(NULL);
+    if (t < 1700000000) {
+        return false;
+    }
+    struct tm lt;
+    localtime_r(&t, &lt);
+    return lt.tm_wday >= 1 && lt.tm_wday <= 5 && lt.tm_hour >= 8 && lt.tm_hour < 12;
+}
+
+/*
+ * Morning rotation: weather <-> bus only, every muse_bus_rotate_ms().
+ * The face is never a rotation target — a talk (or a swipe) goes there,
+ * and rotation only runs while the mode is IDLE anyway. Outside the
+ * window, a rotation we started is wound down back to the face, once;
+ * tiles the user swiped to by hand are left alone.
+ */
+static void rotation_tick(float now, muse_mode_t mode)
+{
+    if (!s_tv || !s_weather || !s_bus) {
+        return;
+    }
+    muse_weather_ui_tick();
+    muse_bus_ui_tick();
+    if (mode != MUSE_MODE_IDLE) {
+        return;
+    }
+    if (!morning_window()) {
+        if (s_rot_engaged) {
+            s_rot_engaged = false;
+            show_tile(s_face);
+        }
+        return;
+    }
+    if (now < s_rot_pause_until) {
+        return;
+    }
+    int dwell_ms = muse_bus_rotate_ms();
+    if (dwell_ms < 1000) {
+        dwell_ms = 1000;
+    }
+    if (dwell_ms > 30000) {
+        dwell_ms = 30000;
+    }
+    if (now - s_rot_last < (float)dwell_ms / 1000.0f) {
+        return;
+    }
+    s_rot_last = now;
+    s_rot_engaged = true;
+    lv_obj_t *act = lv_tileview_get_tile_active(s_tv);
+    show_tile(act == s_weather ? s_bus : s_weather);
+}
+
 static void build_screen(void)
 {
     s_text_16 = lv_font_unscii_16;
@@ -799,16 +897,22 @@ static void build_screen(void)
 
     lv_obj_t *face = scr;
     if (muse_board->touch) {
-        /* Swipe left from Muse for settings. */
+        /* Tiles, left to right: weather (morning home), bus, Muse's face,
+         * settings. Swipe to move between them. */
         s_tv = lv_tileview_create(scr);
         lv_obj_set_style_bg_color(s_tv, lv_color_black(), 0);
         lv_obj_set_style_bg_opa(s_tv, LV_OPA_COVER, 0);
         lv_obj_set_scrollbar_mode(s_tv, LV_SCROLLBAR_MODE_OFF);
-        s_face = lv_tileview_add_tile(s_tv, 0, 0, LV_DIR_RIGHT);
+        s_weather = lv_tileview_add_tile(s_tv, 0, 0, LV_DIR_RIGHT);
+        lv_obj_set_scrollbar_mode(s_weather, LV_SCROLLBAR_MODE_OFF);
+        s_bus = lv_tileview_add_tile(s_tv, 1, 0, LV_DIR_LEFT | LV_DIR_RIGHT);
+        lv_obj_set_scrollbar_mode(s_bus, LV_SCROLLBAR_MODE_OFF);
+        s_face = lv_tileview_add_tile(s_tv, 2, 0, LV_DIR_LEFT | LV_DIR_RIGHT);
         /* It never scrolls, but LVGL would size its scrollbars from all its
          * children every time it draws any part of it. */
         lv_obj_set_scrollbar_mode(s_face, LV_SCROLLBAR_MODE_OFF);
-        s_settings = lv_tileview_add_tile(s_tv, 1, 0, LV_DIR_LEFT);
+        s_settings = lv_tileview_add_tile(s_tv, 3, 0, LV_DIR_LEFT);
+        lv_obj_add_event_cb(s_tv, on_tile_changed, LV_EVENT_VALUE_CHANGED, NULL);
         face = s_face;
     }
 
@@ -1016,8 +1120,8 @@ static void build_overlays(void)
 {
     lv_obj_t *scr = lv_screen_active();
 
-    /* Page dots. */
-    for (int i = 0; i < 2 && s_tv; i++) {
+    /* Page dots, one per tile: weather, bus, face, settings. */
+    for (int i = 0; i < 4 && s_tv; i++) {
         lv_obj_t *d = lv_obj_create(scr);
         lv_obj_remove_style_all(d);
         lv_obj_set_size(d, 8, 8);
@@ -1025,7 +1129,7 @@ static void build_overlays(void)
         lv_obj_set_style_bg_opa(d, LV_OPA_COVER, 0);
         lv_obj_set_style_bg_color(d, lv_color_hex(COLOR_DOT_OFF), 0);
         lv_obj_remove_flag(d, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_align(d, LV_ALIGN_BOTTOM_MID, i ? 8 : -8, -14);
+        lv_obj_align(d, LV_ALIGN_BOTTOM_MID, i * 18 - 27, -14);
         s_dots[i] = d;
     }
 
@@ -1171,21 +1275,25 @@ static void update_chrome(float now)
     s_next_settings_tick = now + SETTINGS_TICK_S;
 
     if (s_tv) {
-        int page = lv_tileview_get_tile_active(s_tv) == s_settings;
-        bool subpage = muse_settings_ui_in_subpage();
-        bool swipe = !page || !subpage;
+        lv_obj_t *act = lv_tileview_get_tile_active(s_tv);
+        int page = act == s_weather ? 0 : act == s_bus ? 1 : act == s_face ? 2 : 3;
+        bool subpage = page == 3 && muse_settings_ui_in_subpage();
+        bool swipe = page != 3 || !subpage;
         if (swipe != lv_obj_has_flag(s_tv, LV_OBJ_FLAG_SCROLLABLE)) {
             lv_obj_set_flag(s_tv, LV_OBJ_FLAG_SCROLLABLE, swipe);
         }
-        int shown = page * 2 + subpage;
+        int shown = page * 2 + (subpage ? 1 : 0);
         if (shown != s_shown_page) {
-            for (int i = 0; i < 2; i++) {
+            for (int i = 0; i < 4; i++) {
+                if (!s_dots[i]) {
+                    continue;
+                }
                 lv_obj_set_style_bg_color(s_dots[i], lv_color_hex(i == page ? COLOR_ACCENT : COLOR_DOT_OFF), 0);
-                lv_obj_set_flag(s_dots[i], LV_OBJ_FLAG_HIDDEN, page && subpage);
+                lv_obj_set_flag(s_dots[i], LV_OBJ_FLAG_HIDDEN, subpage);
             }
             s_shown_page = shown;
         }
-        muse_settings_ui_tick(lv_obj_get_scroll_x(s_tv) > 0);
+        muse_settings_ui_tick(page == 3);
     }
 
     /* Joining, the icon blinks: the compact layout has no state label. */
@@ -1484,6 +1592,7 @@ static void frame_tick(lv_timer_t *timer)
     if (s_image_dsc.data) {
         return;   /* the image covers the face */
     }
+    rotation_tick(now, mode);
     if (s_tv && lv_obj_get_scroll_x(s_tv) != 0) {
         /* Off screen, or sliding to or from settings: hold still so the
          * slide gets the whole frame time. */
@@ -1544,6 +1653,21 @@ esp_err_t muse_ui_start(void)
     s_image_mutex = xSemaphoreCreateMutex();
     muse_board->display_lock(-1);
     build_screen();
+    if (s_weather) {
+        muse_weather_ui_build(s_weather);
+    }
+    if (s_bus) {
+        muse_bus_ui_build(s_bus);
+    }
+    if (s_tv) {
+        /* The face is the default tile; the morning rotation takes over
+         * from there when its window opens. Mark the switch as ours and
+         * drop any pause the tile-add events during build may have set:
+         * booting is not a manual swipe. */
+        s_expected_tile = s_face;
+        lv_tileview_set_tile(s_tv, s_face, LV_ANIM_OFF);
+        s_rot_pause_until = 0;
+    }
     if (s_settings) {
         muse_settings_ui_build(s_settings);
     } else {
@@ -1563,8 +1687,7 @@ void muse_ui_show_face(void)
     if (!s_tv) {
         return;
     }
-    lv_obj_add_flag(s_tv, LV_OBJ_FLAG_SCROLLABLE);
-    lv_tileview_set_tile(s_tv, s_face, LV_ANIM_ON);
+    show_tile(s_face);
 }
 
 void muse_ui_set_swipe_enabled(bool enabled)

@@ -152,6 +152,10 @@ add_executable(muse_simulator
     src/sim_platform.c
     src/sim_services.c
     "${MUSE_COMPONENT_DIR}/muse_ui.c"
+    "${MUSE_COMPONENT_DIR}/muse_weather_ui.c"
+    "${MUSE_COMPONENT_DIR}/muse_weather_photo.c"
+    "${MUSE_COMPONENT_DIR}/muse_bus_ui.c"
+    "${MUSE_COMPONENT_DIR}/muse_font_cjk_16.c"
     "${MUSE_COMPONENT_DIR}/muse_state.c"
     "${MUSE_COMPONENT_DIR}/muse_text.c"
     "${MUSE_COMPONENT_DIR}/../../avatar/muse_pixel.c"
@@ -163,6 +167,9 @@ target_include_directories(muse_simulator PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${MUSE_COMPONENT_DIR}"
 )
+
+# The morning tiles use localtime_r (POSIX), like src/main.c's own define.
+target_compile_definitions(muse_simulator PRIVATE _POSIX_C_SOURCE=200809L)
 
 target_link_libraries(muse_simulator PRIVATE
     ${MUSE_SIM_LVGL_TARGET}

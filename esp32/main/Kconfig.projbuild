@@ -331,4 +331,41 @@ menu "ESP32 Device SDK"
             Manufacturing provisions the pairing key in KEY2 before Secure Boot
             locks read protection. No shared software attestation key is used.
 
+    config BUS_BACKEND_URL
+        string "Bus notifier backend URL"
+        default "http://192.168.1.100:8765/bus.json"
+        help
+            The LAN backend the morning tiles poll (bus-notifier/backend).
+            Serves weather + bus arrivals as one small JSON document.
+            The NVS key "bus_url" overrides this at runtime. Point it at
+            your own backend host; the default is a placeholder.
+
+    config BUS_TEST_MODE
+        bool "Bus notifier test mode (force the morning window)"
+        default n
+        help
+            Forces the 08:00-12:00 weekday window and the weather/bus
+            rotation at any hour, so the tiles can be tested at night.
+            The NVS key "bus_test" overrides this at runtime.
+            Never ship a gadget with this on.
+
+    config BUS_LANG_ZH
+        bool "Bus notifier tiles in Chinese (off = English)"
+        default y
+        help
+            The morning tiles follow the gadget's system language.
+            The firmware has no global locale setting, so this is the
+            switch: on = Chinese labels, off = English. Terry's system
+            language is Chinese, hence the default. The NVS key
+            "bus_lang" ("zh"/"en") overrides this at runtime.
+
+    config BUS_ROTATE_MS
+        int "Bus notifier rotation dwell (ms per tile)"
+        range 500 30000
+        default 2000
+        help
+            How long each of the weather and bus tiles stays up during
+            the morning rotation. Terry's preference is a fast ~2 s
+            switch. The NVS key "bus_rotate_ms" overrides this.
+
 endmenu

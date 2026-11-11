@@ -18,7 +18,9 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
+#include "muse_busdata.h"
 #include "muse_console.h"
 #include "muse_menu.h"
 #include "muse_settings.h"
@@ -184,6 +186,45 @@ void muse_hatch_status(muse_hatch_status_t *out)
 muse_link_state_t muse_link_state(void)
 {
     return s_link;
+}
+
+/* Bus-notifier data stub: fake but live-feeling — buses relative to the
+ * host clock, fixed pleasant weather. Test mode is on in the simulator so
+ * the morning rotation can be previewed at any hour. */
+void muse_bus_snapshot(muse_bus_snapshot_t *out)
+{
+    time_t now = time(NULL);
+    *out = (muse_bus_snapshot_t){
+        .valid = true,
+        .mock = true,
+        .updated_epoch = (int64_t)now,
+        .bus_count = 2,
+        .buses = {
+            {.route = "159R", .arrival_epoch = (int64_t)now + 7 * 60, .arrival = "8:23"},
+            {.route = "158", .arrival_epoch = (int64_t)now + 24 * 60, .arrival = "8:47"},
+        },
+        .weather_valid = true,
+        .weather_code = 2,
+        .temp_c = 12.0f,
+        .high_c = 15.0f,
+        .low_c = 7.0f,
+        .is_day = true,
+    };
+}
+
+bool muse_bus_test_mode(void)
+{
+    return true;
+}
+
+bool muse_bus_zh(void)
+{
+    return true;   /* Terry's system language is Chinese */
+}
+
+int muse_bus_rotate_ms(void)
+{
+    return 2000;
 }
 
 void muse_settings_ui_build(lv_obj_t *tile)
