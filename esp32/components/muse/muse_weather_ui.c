@@ -41,6 +41,7 @@ static lv_font_t s_text_16;
 static lv_obj_t *s_photo;
 static lv_obj_t *s_clock_lbl;
 static lv_obj_t *s_temp_lbl;
+static lv_obj_t *s_deg_lbl;
 static lv_obj_t *s_info_lbl;
 
 static char s_last_clock[8] = "";
@@ -128,11 +129,13 @@ void muse_weather_ui_build(lv_obj_t *tile)
     lv_obj_set_style_bg_opa(tile, LV_OPA_COVER, 0);
     lv_obj_remove_flag(tile, LV_OBJ_FLAG_SCROLLABLE);
 
-    /* Background art fills the tile (scaled to the tile's size in the
-     * tick, once the layout settles). Layout per the final mockup:
-     * clock at the top (the one label that still gets a scrim), the big
-     * temperature centred over the icon, and one combined
-     * condition + high/low line below it on the gradient. */
+    /* Background art fills most of the tile: it is drawn slightly
+     * smaller than the tile and shifted up (in the tick), so the
+     * elements hanging below the icon (flakes, drops, bolt) stay
+     * clear of the condition line. Layout per the final mockup:
+     * clock at the top (the one label that still gets a scrim), the
+     * big temperature digits centred on the screen centre over the
+     * icon, and one combined condition + high/low line below it. */
     s_photo = lv_image_create(tile);
     lv_obj_set_pos(s_photo, 0, 0);
     lv_obj_remove_flag(s_photo, LV_OBJ_FLAG_CLICKABLE);
@@ -142,10 +145,18 @@ void muse_weather_ui_build(lv_obj_t *tile)
     lv_label_set_text(s_clock_lbl, "--:--");
     lv_obj_align(s_clock_lbl, LV_ALIGN_TOP_MID, 0, 34);
 
+    /* Digits only, anchored on the screen centre (both axes). The
+     * degree sign is a separate smaller label riding at the digits'
+     * top right (mockup-wx3) — it is NOT part of the centred string,
+     * so the digits themselves sit dead centre. */
     s_temp_lbl = make_label(tile, FONT_BIG);
-    lv_label_set_text(s_temp_lbl, "--°C");
+    lv_label_set_text(s_temp_lbl, "--");
     lv_obj_set_style_text_color(s_temp_lbl, lv_color_hex(TEMP_NAVY), 0);
-    lv_obj_align(s_temp_lbl, LV_ALIGN_CENTER, 0, 20);
+    lv_obj_align(s_temp_lbl, LV_ALIGN_CENTER, 0, 0);
+
+    s_deg_lbl = make_label(tile, &lv_font_montserrat_28);
+    lv_label_set_text(s_deg_lbl, "°");
+    lv_obj_set_style_text_color(s_deg_lbl, lv_color_hex(TEMP_NAVY), 0);
 
     s_info_lbl = make_label(tile, small);
     lv_obj_align(s_info_lbl, LV_ALIGN_CENTER, 0, 104);
@@ -185,24 +196,42 @@ void muse_weather_ui_tick(void)
             lv_image_set_src(s_photo, photo);
             int w = lv_obj_get_width(lv_obj_get_parent(s_photo));
             if (w > 0 && photo->header.w > 0) {
-                lv_image_set_scale(s_photo, (int32_t)w * 256 / photo->header.w);
+                /* Placement tuned against the measured artwork
+                 * geometry: the cloud body sits at 28-56% of the
+                 * frame and the hanging elements (flakes, drops,
+                 * bolt) reach ~73%. At 90% of the tile width with
+                 * the top at +7.2%, the cloud spans roughly 32-58%
+                 * of the screen, so the screen-centred temp digits
+                 * sit inside the cloud's lower body (the cloud wraps
+                 * around them, per the approved mockup) while the
+                 * hanging elements end just clear of the condition
+                 * line under the temperature. */
+                int32_t scale = (int32_t)w * 256 / photo->header.w * 90 / 100;
+                lv_image_set_scale(s_photo, scale);
+                int disp = (int)((int64_t)photo->header.w * scale / 256);
+                lv_obj_set_pos(s_photo, (w - disp) / 2, w * 72 / 1000);
             }
             lv_obj_move_background(s_photo);
             /* Temperature colour follows the artwork: navy over the
              * light icons, white over the dark ones. */
-            lv_obj_set_style_text_color(s_temp_lbl,
-                muse_weather_group_dark(group)
-                    ? lv_color_white()
-                    : lv_color_hex(TEMP_NAVY), 0);
+            lv_color_t tc = muse_weather_group_dark(group)
+                ? lv_color_white() : lv_color_hex(TEMP_NAVY);
+            lv_obj_set_style_text_color(s_temp_lbl, tc, 0);
+            lv_obj_set_style_text_color(s_deg_lbl, tc, 0);
         }
     }
 
     char buf[64];
-    snprintf(buf, sizeof(buf), "%.0f°C", (double)snap.temp_c);
+    snprintf(buf, sizeof(buf), "%.0f", (double)snap.temp_c);
     if (strcmp(buf, s_last_temp) != 0) {
         strcpy(s_last_temp, buf);
         lv_label_set_text(s_temp_lbl, buf);
     }
+    /* Degree sign as a superscript at the digits' top right; the
+     * offset drops it about a third of the digit height down from
+     * the top edge (mockup-wx3). Re-applied every tick so it tracks
+     * digit-width changes ("7" -> "12" -> "-2"). */
+    lv_obj_align_to(s_deg_lbl, s_temp_lbl, LV_ALIGN_OUT_TOP_RIGHT, 2, 14);
     const char *cond = label_for_code(snap.weather_code, zh);
     if (zh) {
         snprintf(buf, sizeof(buf), "%s · 高 %.0f° 低 %.0f°", cond,
