@@ -43,6 +43,7 @@ static lv_font_t s_text_16;
 #define GRAD_TOP 0x6ebee4
 #define GRAD_BOTTOM 0x176ebe
 #define STALE_S 180   /* data older than this is shown dim, as last known */
+#define BUS_DY 28     /* the stack sits this far below centre */
 
 static lv_obj_t *s_badge;
 static bool s_badge_scaled;
@@ -150,10 +151,12 @@ void muse_bus_ui_build(lv_obj_t *tile)
      * drifted right and clipped in testing). They anchor to the
      * screen centre independently, with fixed offsets sized from
      * the countdown's font height — deterministic for every text. */
-    lv_obj_align(s_count_lbl, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_align(s_arrival_lbl, LV_ALIGN_CENTER, 0, 52);
-    lv_obj_align(s_second_lbl, LV_ALIGN_CENTER, 0, 82);
-    lv_obj_align(s_mock_lbl, LV_ALIGN_CENTER, 0, 108);
+    /* The whole stack sits BUS_DY below centre: the badge on top
+     * otherwise crowds the round screen's upper edge. */
+    lv_obj_align(s_count_lbl, LV_ALIGN_CENTER, 0, BUS_DY);
+    lv_obj_align(s_arrival_lbl, LV_ALIGN_CENTER, 0, BUS_DY + 52);
+    lv_obj_align(s_second_lbl, LV_ALIGN_CENTER, 0, BUS_DY + 82);
+    lv_obj_align(s_mock_lbl, LV_ALIGN_CENTER, 0, BUS_DY + 108);
     lv_obj_align_to(s_route_lbl, s_count_lbl, LV_ALIGN_OUT_TOP_MID, 0, -10);
     lv_obj_align_to(s_badge, s_route_lbl, LV_ALIGN_OUT_TOP_MID, 0, -12);
 }
@@ -202,15 +205,19 @@ void muse_bus_ui_tick(void)
     } else if (zh) {
         snprintf(buf, sizeof(buf), "%d 分钟", (int)((left + 59) / 60));
         set_text(s_count_lbl, s_last_count, buf);
-    } else {
+    } else if (left < 3600) {
         snprintf(buf, sizeof(buf), "%d min", (int)((left + 59) / 60));
+        set_text(s_count_lbl, s_last_count, buf);
+    } else {
+        int mins = (int)((left + 59) / 60);
+        snprintf(buf, sizeof(buf), "%dh %02dm", mins / 60, mins % 60);
         set_text(s_count_lbl, s_last_count, buf);
     }
 
     if (zh) {
         snprintf(buf, sizeof(buf), "%s 到", b0->arrival);
     } else {
-        snprintf(buf, sizeof(buf), "Arrives %s · to New York", b0->arrival);
+        snprintf(buf, sizeof(buf), "Arrives %s • to New York", b0->arrival);
     }
     set_text(s_arrival_lbl, s_last_arrival, buf);
 
@@ -219,7 +226,7 @@ void muse_bus_ui_tick(void)
         if (zh) {
             snprintf(buf, sizeof(buf), "下一班 %s · %s", b1->route, b1->arrival);
         } else {
-            snprintf(buf, sizeof(buf), "Next %s · %s", b1->route, b1->arrival);
+            snprintf(buf, sizeof(buf), "Next %s • %s", b1->route, b1->arrival);
         }
     } else {
         buf[0] = '\0';

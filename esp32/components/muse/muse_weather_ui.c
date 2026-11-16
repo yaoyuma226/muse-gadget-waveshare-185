@@ -110,7 +110,7 @@ static const char *label_for_code(int code, bool zh)
         case 82: return zh ? "暴雨" : "Violent showers";
         case 85: case 86: return zh ? "阵雪" : "Snow showers";
         case 95: case 96: case 99: return zh ? "雷雨" : "Thunderstorm";
-        default: return zh ? "未知" : "—";
+        default: return zh ? "未知" : "--";
     }
 }
 
@@ -196,20 +196,11 @@ void muse_weather_ui_tick(void)
             lv_image_set_src(s_photo, photo);
             int w = lv_obj_get_width(lv_obj_get_parent(s_photo));
             if (w > 0 && photo->header.w > 0) {
-                /* Placement tuned against the measured artwork
-                 * geometry: the cloud body sits at 28-56% of the
-                 * frame and the hanging elements (flakes, drops,
-                 * bolt) reach ~73%. At 90% of the tile width with
-                 * the top at +7.2%, the cloud spans roughly 32-58%
-                 * of the screen, so the screen-centred temp digits
-                 * sit inside the cloud's lower body (the cloud wraps
-                 * around them, per the approved mockup) while the
-                 * hanging elements end just clear of the condition
-                 * line under the temperature. */
-                int32_t scale = (int32_t)w * 256 / photo->header.w * 90 / 100;
-                lv_image_set_scale(s_photo, scale);
-                int disp = (int)((int64_t)photo->header.w * scale / 256);
-                lv_obj_set_pos(s_photo, (w - disp) / 2, w * 72 / 1000);
+                /* Full bleed: the art is stretched to cover the whole
+                 * tile (320 px art on the 360 px panel), no border. */
+                lv_obj_set_size(s_photo, w, lv_obj_get_height(lv_obj_get_parent(s_photo)));
+                lv_image_set_inner_align(s_photo, LV_IMAGE_ALIGN_STRETCH);
+                lv_obj_set_pos(s_photo, 0, 0);
             }
             lv_obj_move_background(s_photo);
             /* Temperature colour follows the artwork: navy over the
@@ -237,7 +228,7 @@ void muse_weather_ui_tick(void)
         snprintf(buf, sizeof(buf), "%s · 高 %.0f° 低 %.0f°", cond,
                  (double)snap.high_c, (double)snap.low_c);
     } else {
-        snprintf(buf, sizeof(buf), "%s · H %.0f° L %.0f°", cond,
+        snprintf(buf, sizeof(buf), "%s • H %.0f° L %.0f°", cond,
                  (double)snap.high_c, (double)snap.low_c);
     }
     if (strcmp(buf, s_last_info) != 0) {

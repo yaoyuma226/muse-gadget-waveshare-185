@@ -25,6 +25,7 @@
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/idf_additions.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "sdkconfig.h"
@@ -35,12 +36,16 @@ static const char *TAG = "bus_client";
 #define FETCH_MAX_BYTES (8 * 1024)
 #define POLL_ACTIVE_MS 60000    /* morning window (or test mode) */
 #define POLL_IDLE_MS 300000     /* outside it: weather stays fresh enough */
+#define POLL_RETRY_MS 5000      /* until the first fetch lands (Wi-Fi still coming up) */
 
 static SemaphoreHandle_t s_lock;
 static muse_bus_snapshot_t s_snap;
 static char s_url[192];
+static bool s_test_mode;
+static bool s_zh;
+static int s_rotate_ms;
 
-bool bus_client_test_mode(void)
+static bool read_test_mode(void)
 {
     char v[8];
     if (config_get_str("bus_test", v, sizeof(v))) {
@@ -53,7 +58,7 @@ bool bus_client_test_mode(void)
 #endif
 }
 
-bool bus_client_zh(void)
+static bool read_zh(void)
 {
     char v[8];
     if (config_get_str("bus_lang", v, sizeof(v))) {
@@ -71,7 +76,7 @@ bool bus_client_zh(void)
 #endif
 }
 
-int bus_client_rotate_ms(void)
+static int read_rotate_ms(void)
 {
     char v[16];
     if (config_get_str("bus_rotate_ms", v, sizeof(v))) {
@@ -81,6 +86,23 @@ int bus_client_rotate_ms(void)
         }
     }
     return CONFIG_BUS_ROTATE_MS;
+}
+
+/* Read once in bus_client_start: the poller's stack is in PSRAM, so it
+ * must not touch flash (NVS), and the UI only needs them at boot. */
+bool bus_client_test_mode(void)
+{
+    return s_test_mode;
+}
+
+bool bus_client_zh(void)
+{
+    return s_zh;
+}
+
+int bus_client_rotate_ms(void)
+{
+    return s_rotate_ms;
 }
 
 void bus_client_snapshot(muse_bus_snapshot_t *out)
@@ -225,6 +247,8 @@ static bool fetch_once(void)
             ESP_LOGW(TAG, "backend JSON did not parse");
             ok = false;
         }
+    } else {
+        ESP_LOGW(TAG, "fetch from %s failed", s_url);
     }
     free(body);
     return ok;
@@ -233,11 +257,13 @@ static bool fetch_once(void)
 static void bus_task(void *arg)
 {
     (void)arg;
+    bool have_data = false;
     for (;;) {
-        if (wifi_mgr_is_connected() && s_url[0]) {
-            fetch_once();
+        if (wifi_mgr_is_connected() && s_url[0] && fetch_once()) {
+            have_data = true;
         }
-        vTaskDelay(pdMS_TO_TICKS(window_active() ? POLL_ACTIVE_MS : POLL_IDLE_MS));
+        int ms = window_active() ? POLL_ACTIVE_MS : POLL_IDLE_MS;
+        vTaskDelay(pdMS_TO_TICKS(have_data ? ms : POLL_RETRY_MS));
     }
 }
 
@@ -249,10 +275,18 @@ void bus_client_start(void)
     }
     started = true;
     s_lock = xSemaphoreCreateMutex();
+    s_test_mode = read_test_mode();
+    s_zh = read_zh();
+    s_rotate_ms = read_rotate_ms();
     if (!config_get_str("bus_url", s_url, sizeof(s_url))) {
         strncpy(s_url, CONFIG_BUS_BACKEND_URL, sizeof(s_url) - 1);
         s_url[sizeof(s_url) - 1] = '\0';
     }
     ESP_LOGI(TAG, "backend: %s (test mode %s)", s_url, bus_client_test_mode() ? "on" : "off");
-    xTaskCreate(bus_task, "bus_client", 8192, NULL, 3, NULL);
+    /* Stack in PSRAM: internal RAM is what BLE pairing and Wi-Fi
+     * provisioning run short of (a scan task failed to start with this
+     * stack internal). The task never touches flash. */
+    if (xTaskCreateWithCaps(bus_task, "bus_client", 8192, NULL, 3, NULL, MALLOC_CAP_SPIRAM) != pdPASS) {
+        ESP_LOGE(TAG, "failed to start bus poller");
+    }
 }

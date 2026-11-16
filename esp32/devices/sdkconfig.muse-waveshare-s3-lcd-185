@@ -78,3 +78,7 @@ CONFIG_PM_PROFILING=y
 # Play your avatar's clips from the avatar partition (tools/muse/avatar_video.py);
 # the pixel avatar until they're flashed.
 CONFIG_MUSE_VIDEO_AVATAR=y
+
+# The enclosure covers the BOOT (talk) button: hold the screen to talk.
+CONFIG_MUSE_TOUCH_TALK=y
+CONFIG_MUSE_SPEAKER_BUTTON=n

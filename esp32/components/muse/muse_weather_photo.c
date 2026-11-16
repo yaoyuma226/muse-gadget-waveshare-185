@@ -16,9 +16,8 @@
 
 /*
  * Maps WMO weather codes (Open-Meteo) to per-condition background art
- * (muse_bg_assets.c). the full smooth matte set was approved, so
- * every group has its own render now; clear and partly cloudy split
- * into day/night variants by the caller's is_day flag.
+ * (muse_bg_assets.c). Every group has its own render; clear and partly
+ * cloudy split into day/night variants by the caller's is_day flag.
  *
  *   code(s)              image
  *   0                    clear day / clear night
@@ -37,7 +36,30 @@
 
 #include "muse_weather_photo.h"
 
+#include <string.h>
+
 #include "muse_bg_assets.h"
+#include "src/misc/cache/instance/lv_image_cache.h"
+
+/* The S3's ROM TJpgDec, as muse_video_avatar.c uses. LVGL's own copy
+ * (LV_USE_TJPGD) must stay off on the device: its jd_prepare/jd_decomp
+ * override the ROM symbols at link time with a different JDEC layout,
+ * which breaks the avatar's decoder. The simulator has no ROM, so it
+ * builds LVGL's copy; the API is the same apart from the integer types. */
+#ifdef ESP_PLATFORM
+#include "esp32s3/rom/tjpgd.h"
+typedef UINT jd_size_t;
+typedef BYTE jd_byte_t;
+typedef UINT jd_ret_t;
+#else
+#include "src/libs/tjpgd/tjpgd.h"
+typedef size_t jd_size_t;
+typedef uint8_t jd_byte_t;
+typedef int jd_ret_t;
+#endif
+
+#define PHOTO_SIZE 320
+#define TJPGD_POOL_BYTES 4096
 
 enum {
     GRP_CLEAR_DAY = 0,
@@ -56,7 +78,7 @@ enum {
     GRP_COUNT,
 };
 
-static const lv_image_dsc_t *const GROUP_IMAGES[GRP_COUNT] = {
+static const muse_bg_jpeg_t *const GROUP_IMAGES[GRP_COUNT] = {
     &muse_bg_clear_day,     /* clear day */
     &muse_bg_clear_night,   /* clear night */
     &muse_bg_partly_day,    /* partly cloudy, day */
@@ -114,10 +136,92 @@ bool muse_weather_group_dark(int group)
            group == GRP_HAIL;
 }
 
+/* Two decode slots, used alternately: the image widget still points at
+ * the previous slot while the next one is decoded, and LVGL caches by
+ * descriptor pointer, so a slot is dropped from its cache before reuse. */
+static lv_image_dsc_t s_slots[2];
+static int s_next_slot;
+
+typedef struct {
+    const muse_bg_jpeg_t *jpg;
+    size_t pos;
+    uint16_t *out;
+} decode_ctx_t;
+
+static jd_size_t jpg_in(JDEC *jd, jd_byte_t *buf, jd_size_t n)
+{
+    decode_ctx_t *ctx = jd->device;
+    size_t left = ctx->jpg->size - ctx->pos;
+    if (n > left) {
+        n = left;
+    }
+    if (buf) {
+        memcpy(buf, ctx->jpg->data + ctx->pos, n);
+    }
+    ctx->pos += n;
+    return n;
+}
+
+/* TJpgDec hands out RGB888 rectangles (JD_FORMAT 0); pack to RGB565. */
+static jd_ret_t jpg_out(JDEC *jd, void *bitmap, JRECT *rect)
+{
+    decode_ctx_t *ctx = jd->device;
+    const uint8_t *src = bitmap;
+    for (int y = rect->top; y <= rect->bottom; y++) {
+        uint16_t *dst = ctx->out + y * PHOTO_SIZE + rect->left;
+        for (int x = rect->left; x <= rect->right; x++) {
+            *dst++ = (uint16_t)(((src[0] & 0xf8) << 8) | ((src[1] & 0xfc) << 3) | (src[2] >> 3));
+            src += 3;
+        }
+    }
+    return 1;
+}
+
 const lv_image_dsc_t *muse_weather_photo(int group)
 {
     if (group < 0 || group >= GRP_COUNT) {
         group = GRP_OVERCAST;
     }
-    return GROUP_IMAGES[group];
+    lv_image_dsc_t *dsc = &s_slots[s_next_slot];
+    if (!dsc->data) {
+        void *buf = lv_malloc(PHOTO_SIZE * PHOTO_SIZE * 2);
+        if (!buf) {
+            return NULL;
+        }
+        dsc->header.magic = LV_IMAGE_HEADER_MAGIC;
+        dsc->header.cf = LV_COLOR_FORMAT_RGB565;
+        dsc->header.w = PHOTO_SIZE;
+        dsc->header.h = PHOTO_SIZE;
+        dsc->header.stride = PHOTO_SIZE * 2;
+        dsc->data_size = PHOTO_SIZE * PHOTO_SIZE * 2;
+        dsc->data = buf;
+    } else {
+        lv_image_cache_drop(dsc);
+    }
+
+    void *pool = lv_malloc(TJPGD_POOL_BYTES);
+    if (!pool) {
+        return NULL;
+    }
+    /* Static, not on the stack: this runs in the LVGL task. */
+    static decode_ctx_t ctx;
+    static JDEC jd;
+    ctx = (decode_ctx_t){
+        .jpg = GROUP_IMAGES[group],
+        .out = (uint16_t *)dsc->data,
+    };
+    JRESULT res = jd_prepare(&jd, jpg_in, pool, TJPGD_POOL_BYTES, &ctx);
+    if (res == JDR_OK && (jd.width != PHOTO_SIZE || jd.height != PHOTO_SIZE)) {
+        res = JDR_FMT1;
+    }
+    if (res == JDR_OK) {
+        res = jd_decomp(&jd, jpg_out, 0);
+    }
+    lv_free(pool);
+    if (res != JDR_OK) {
+        LV_LOG_WARN("weather photo %d: JPEG decode failed (%d)", group, (int)res);
+        return NULL;
+    }
+    s_next_slot ^= 1;
+    return dsc;
 }

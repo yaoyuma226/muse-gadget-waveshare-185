@@ -22,6 +22,7 @@
 #include "esp_log.h"
 #include "esp_netif_sntp.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/idf_additions.h"
 #include "freertos/task.h"
 #include "wifi_mgr.h"
 
@@ -46,7 +47,7 @@ static void time_sync_task(void *arg)
     esp_err_t err = esp_netif_sntp_init(&cfg);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "SNTP init failed: %s", esp_err_to_name(err));
-        vTaskDelete(NULL);
+        vTaskDeleteWithCaps(NULL);
         return;
     }
     if (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(15000)) == ESP_OK) {
@@ -59,7 +60,7 @@ static void time_sync_task(void *arg)
     } else {
         ESP_LOGW(TAG, "SNTP sync timed out; will keep trying in background");
     }
-    vTaskDelete(NULL);
+    vTaskDeleteWithCaps(NULL);
 }
 
 void time_sync_start(void)
@@ -69,5 +70,9 @@ void time_sync_start(void)
         return;
     }
     started = true;
-    xTaskCreate(time_sync_task, "time_sync", 4096, NULL, 3, NULL);
+    /* Stack in PSRAM (no flash access here), keeping internal RAM free
+     * for BLE pairing and Wi-Fi provisioning. */
+    if (xTaskCreateWithCaps(time_sync_task, "time_sync", 4096, NULL, 3, NULL, MALLOC_CAP_SPIRAM) != pdPASS) {
+        ESP_LOGE(TAG, "failed to start SNTP task");
+    }
 }

@@ -139,6 +139,24 @@ menu "Muse"
             them. Needs PSRAM. Without it, voice notes go over Home Link's own
             session to its paired VM and replies are shown as text.
 
+    config MUSE_SPEAKER_BUTTON
+        bool "Speaker on/off button on Muse's face (touch boards)"
+        depends on MUSE_ENABLED
+        default y
+        help
+            The round button by the status icons that toggles spoken
+            replies on a long press. Off hides it; the speaker stays
+            switchable from the settings page and the Muse app.
+
+    config MUSE_TOUCH_TALK
+        bool "Hold the screen on Muse's face to talk (touch boards)"
+        depends on MUSE_ENABLED
+        default n
+        help
+            Press and hold anywhere on Muse's face to talk, release to
+            send, as the talk button does. For enclosures that cover
+            the talk button. The button keeps working.
+
     config MUSE_VIDEO_AVATAR
         bool "Play your avatar's own clips in place of the pixel art"
         depends on MUSE_ENABLED && IDF_TARGET_ESP32S3 && SPIRAM

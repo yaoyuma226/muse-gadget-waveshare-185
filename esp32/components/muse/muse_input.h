@@ -46,5 +46,9 @@ typedef struct {
 /* PTT events are posted to `queue` (items are muse_input_event_t). */
 esp_err_t muse_input_start(QueueHandle_t queue);
 
+/* Push-to-talk from the touch screen (CONFIG_MUSE_TOUCH_TALK): down on a
+ * hold, up on release. Ignored while the talk button is held. Any task. */
+void muse_input_touch_talk(bool down);
+
 /* Plays the goodbye animation and powers off (from the input task). */
 void muse_input_request_power_off(void);

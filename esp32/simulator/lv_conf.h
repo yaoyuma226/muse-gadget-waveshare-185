@@ -56,6 +56,7 @@
 #define LV_FONT_MONTSERRAT_20 1
 #define LV_FONT_MONTSERRAT_28 1
 #define LV_FONT_MONTSERRAT_48 1
+#define LV_USE_TJPGD 1
 #define LV_FONT_UNSCII_8 1
 #define LV_FONT_UNSCII_16 1
 #define LV_FONT_DEFAULT &lv_font_montserrat_20

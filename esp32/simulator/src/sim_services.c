@@ -219,7 +219,7 @@ bool muse_bus_test_mode(void)
 
 bool muse_bus_zh(void)
 {
-    return true;   /* the system language is Chinese */
+    return false;  /* English, as the device's default */
 }
 
 int muse_bus_rotate_ms(void)

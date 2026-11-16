@@ -34,3 +34,4 @@ esp32/dependencies.lock
 # Local only: Claude Code notes and the SDK token
 CLAUDE.md
 .env
+bus-notifier/backend/njt.env

@@ -38,6 +38,7 @@
 #include "muse_busdata.h"
 #include "muse_chat.h"
 #include "muse_console.h"
+#include "muse_input.h"
 #include "muse_link.h"
 #include "muse_mem.h"
 #include "muse_menu.h"
@@ -114,6 +115,7 @@ static lv_obj_t *s_wifi_icon;
 static lv_obj_t *s_ble_icon;
 static lv_obj_t *s_cover;
 static lv_obj_t *s_pair;
+static lv_obj_t *s_pair_tap;   /* full screen: a tap confirms Muse app pairing */
 static lv_obj_t *s_pair_code;
 static lv_obj_t *s_pair_title;
 static lv_obj_t *s_pair_hint;
@@ -543,6 +545,13 @@ static void on_speaker_event(lv_event_t *e)
     }
 }
 
+#if CONFIG_MUSE_TOUCH_TALK
+static void on_face_talk(lv_event_t *e)
+{
+    muse_input_touch_talk(lv_event_get_code(e) == LV_EVENT_LONG_PRESSED);
+}
+#endif
+
 /* Upper left by the status icons, where a thumb finds it without covering the reply. */
 static void build_speaker(lv_obj_t *face, int x, int y)
 {
@@ -748,9 +757,22 @@ static void build_answer(lv_obj_t *face, int ring_in)
     lv_obj_remove_flag(s_reply_lbl, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(s_reply_lbl, LV_OBJ_FLAG_HIDDEN);
 
+#if CONFIG_MUSE_SPEAKER_BUTTON
     if (muse_board->touch) {
         build_speaker(face, spk_x, spk_y);
     }
+#endif
+#if CONFIG_MUSE_TOUCH_TALK
+    if (s_face) {
+        /* Long press, so a swipe between pages never starts a recording
+         * (the scroll takes the press first, and LVGL skips LONG_PRESSED). */
+        static const lv_event_code_t TALK_EVENTS[] = { LV_EVENT_LONG_PRESSED, LV_EVENT_RELEASED,
+                                                       LV_EVENT_PRESS_LOST };
+        for (size_t i = 0; i < sizeof(TALK_EVENTS) / sizeof(TALK_EVENTS[0]); i++) {
+            lv_obj_add_event_cb(s_face, on_face_talk, TALK_EVENTS[i], NULL);
+        }
+    }
+#endif
 
     /* Out of the way while a page is up: the mode name, where Muse was. */
     lv_obj_update_layout(face);
@@ -1039,6 +1061,14 @@ static void build_screen(void)
 }
 
 
+static void on_pair_tap(lv_event_t *e)
+{
+    LV_UNUSED(e);
+    if (muse_link_talk_press()) {
+        muse_state_poke();
+    }
+}
+
 static void on_cover_event(lv_event_t *e)
 {
     if (lv_event_get_code(e) == LV_EVENT_PRESSED) {
@@ -1154,6 +1184,15 @@ static void build_overlays(void)
     lv_obj_center(hint_text);
     lv_obj_add_event_cb(s_camera_hint, on_camera_hint_clicked, LV_EVENT_CLICKED, NULL);
 #endif
+
+    /* Touch boards can confirm a Muse app pairing with a tap anywhere, for
+     * enclosures that hide the talk button. Under the card, which is not
+     * clickable, so taps on the card land here too. */
+    s_pair_tap = lv_obj_create(lv_layer_top());
+    lv_obj_remove_style_all(s_pair_tap);
+    lv_obj_set_size(s_pair_tap, lv_pct(100), lv_pct(100));
+    lv_obj_add_flag(s_pair_tap, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_event_cb(s_pair_tap, on_pair_tap, LV_EVENT_CLICKED, NULL);
 
     /* BLE pairing code, or the Muse app's ask for the talk button: a centred
      * column in one typeface, the code large. The small card grows with the hint. */
@@ -1340,7 +1379,10 @@ static void update_chrome(float now)
     bool confirm = !b.passkey && muse_link_state() == MUSE_LINK_CONFIRM;
     if (b.passkey || confirm) {
         char code[24], hint[40];
-        if (confirm) {
+        if (confirm && muse_board->touch) {
+            strlcpy(code, s_small ? "Tap" : "Tap screen", sizeof(code));
+            strlcpy(hint, s_small ? "to confirm" : "Tap anywhere to confirm", sizeof(hint));
+        } else if (confirm) {
             strlcpy(code, s_small ? "Press" : "Press button", sizeof(code));
             snprintf(hint, sizeof(hint), s_small ? "%s button" : "Press the %s button", muse_board->talk_button);
         } else {
@@ -1355,6 +1397,7 @@ static void update_chrome(float now)
         }
     }
     lv_obj_set_flag(s_pair, LV_OBJ_FLAG_HIDDEN, !b.passkey && !confirm);
+    lv_obj_set_flag(s_pair_tap, LV_OBJ_FLAG_HIDDEN, !confirm || !muse_board->touch);
 
     bool speaker = muse_settings_speaker_on();   /* also set from settings, the phone and serial */
     if (s_speaker && (int)speaker != s_shown_speaker) {
@@ -1593,9 +1636,10 @@ static void frame_tick(lv_timer_t *timer)
         return;   /* the image covers the face */
     }
     rotation_tick(now, mode);
-    if (s_tv && lv_obj_get_scroll_x(s_tv) != 0) {
-        /* Off screen, or sliding to or from settings: hold still so the
-         * slide gets the whole frame time. */
+    if (s_tv && lv_obj_get_scroll_x(s_tv) != lv_obj_get_x(s_face)) {
+        /* Off screen, or sliding to or from another page: hold still so
+         * the slide gets the whole frame time. (The face is the third
+         * tile, so it is not at scroll 0.) */
         return;
     }
 

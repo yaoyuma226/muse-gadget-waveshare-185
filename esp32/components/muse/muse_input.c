@@ -81,6 +81,16 @@ static void post(muse_ptt_t type, bool wake)
     xQueueSend(s_queue, &ev, 0);
 }
 
+void muse_input_touch_talk(bool down)
+{
+    static bool s_touch_down;
+    if (!s_queue || s_talk_down || down == s_touch_down) {
+        return;
+    }
+    s_touch_down = down;
+    post(down ? MUSE_PTT_DOWN : MUSE_PTT_UP, false);
+}
+
 static bool update_power(void);
 
 static void power_off(void)

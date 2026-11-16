@@ -1,0 +1,17 @@
+# Bus notifier backend. On the NAS:
+#   cp njt.env.example njt.env && $EDITOR njt.env   # BUSDV2 login
+#   docker compose up -d
+# then point the gadget at http://<nas-ip>:8765/bus.json.
+services:
+  bus-notifier:
+    image: python:3.12-alpine
+    container_name: bus-notifier
+    restart: unless-stopped
+    command: ["python", "-u", "/app/server.py"]
+    volumes:
+      - ./server.py:/app/server.py:ro
+    env_file: njt.env
+    environment:
+      TZ: America/New_York
+    ports:
+      - "8765:8765"

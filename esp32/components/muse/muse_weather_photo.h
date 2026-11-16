@@ -28,15 +28,16 @@
  *   4 overcast, 5 fog, 6 light rain, 7 rain, 8 heavy rain, 9 sleet,
  *   10 snow, 11 storm, 12 hail
  *
- * The final design: simple and clean, the visual doing the work —
+ * The design: simple and clean, the visual doing the work —
  * a condition-coloured gradient with ONE big smooth matte icon (flat
  * silhouette, a few large rounded shapes, soft gradient shading, no
  * gloss), the temperature drawn centred over the icon. Each image is
- * a pre-rendered 320x320 RGB565 asset (muse_bg_img_<name>.c; the UI
- * scales it to the tile width), generated from the artwork in
- * ~/workspace/bus-notifier/assets by esp32/tools/gen_bg_assets.py.
- * 320 not 360: 13 images at 360x360 would be 3.21 MiB of the 4 MiB
- * app slot, leaving too little for the rest of the firmware.
+ * a pre-rendered 320x320 JPEG (muse_bg_img_<name>.c; the UI scales it
+ * to the tile width), generated from the artwork in
+ * ~/workspace/bus-notifier/assets by esp32/tools/gen_bg_assets.py,
+ * and decoded to RGB565 in PSRAM on demand. As raw RGB565 the set
+ * (2.5 MiB) did not fit the 4 MiB app slot with the rest of the
+ * firmware.
  */
 
 /* Condition group for a WMO code (Open-Meteo), 0..12 as listed above.
@@ -49,6 +50,8 @@ int muse_weather_group(int weather_code, bool is_day);
  * otherwise. */
 bool muse_weather_group_dark(int group);
 
-/* LVGL image for the group (a flash-resident descriptor, always
- * valid). LVGL task only. */
+/* Decodes the group's art and returns an RGB565 image for it, or NULL
+ * if the decode (or its allocation) failed. Call only when the group
+ * changes: the returned descriptor stays valid until the call after
+ * next, as two buffers alternate. LVGL task only. */
 const lv_image_dsc_t *muse_weather_photo(int group);

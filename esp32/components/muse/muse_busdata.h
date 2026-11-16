@@ -57,8 +57,7 @@ void muse_bus_snapshot(muse_bus_snapshot_t *out);
  * UI language for the morning tiles, following the gadget's system
  * language: true = Chinese, false = English. The firmware has no global
  * locale setting, so this is its own config (NVS key "bus_lang" =
- * "zh"/"en", else CONFIG_BUS_LANG_ZH; default Chinese, the owner's system
- * language). Condition names are mapped from the WMO code on-device, in
+ * "zh"/"en", else CONFIG_BUS_LANG_ZH; default English). Condition names are mapped from the WMO code on-device, in
  * this language — the backend sends no text.
  */
 bool muse_bus_zh(void);
